@@ -1,0 +1,91 @@
+# Reconstruction baselines for the series JEPA (qtsmfjepa-series-ohlcv-10m): same data, encoder, schedule and probe;
+# only the objective changes. model.objective=future predicts raw future blocks, model.objective=masked is PatchTST /
+# SimMIM masked-patch modeling. Keep data/optim in sync with qtsmfjepa-series-ohlcv-10m.yaml.
+# launch: torchrun --nproc_per_node=1 -m mc_jepa.trainer.panel_jepa_trainer --config-name=qtsmmae-series-ohlcv-10m
+timestamp: null  # experiment id, defaults to the launch time
+
+data:
+  format: series  # StockSeriesDataset (v3)
+  seed: 666
+  features: [open, high, low, close, volume]
+  # context bars (4 trading days); a multiple of model.patch_len, at most model.max_patches patches.
+  lookback: 960
+  # decision HHMMSS to keep: every 10 min from 09:40 (24 anchors per stock-day, 130M train windows); null keeps every
+  # bar.
+  times_of_day: [
+    94000, 95000, 100000, 101000, 102000, 103000, 104000, 105000, 110000, 111000, 112000, 113000,
+    131000, 132000, 133000, 134000, 135000, 140000, 141000, 142000, 143000, 144000, 145000, 150000,
+  ]
+  mmap_warmup: false
+  num_workers: 10
+  # future blocks reach model.horizons[-1] + model.target_block_len - 1 bars past each decision time: keep at
+  # least that many bars between train.end_timestamp and val.start_timestamp as an embargo
+  # splits: train before 2022-07, eval 2022-07..2022-12, test 2023-01..2025-12 (never used in pretraining)
+  train:
+    prefix: /path/to/mmap-v3/1min/train-ohlcv
+    start_timestamp: null
+    end_timestamp: 20220701000000
+    symbols: null  # list or file of symbols to train on; hold stocks out for the unseen-stock test
+    num_samples: null  # random subset of windows; null keeps all
+  val:
+    prefix: ${data.train.prefix}
+    start_timestamp: 20220711000000
+    end_timestamp: 20230101000000  # 2023-2025 is the held-out test period (tools/eval_jepa_probe.py)
+    times_of_day: [100000, 103000, 110000, 113000, 133000, 140000, 143000, 150000]  # overrides data.times_of_day
+    symbols: null
+    num_samples: 65536  # fixed random subset, scored at every validation
+  train_batch_size: 1024  # windows per optimizer step, over all ranks
+  micro_batch_size_per_gpu: 1024
+  total_training_steps: 20000
+
+optim:
+  type: adamw
+  lr: 3e-4
+  min_lr_ratio: 0.0
+  betas: [0.9, 0.95]
+  weight_decay: 0.05
+  warmup_steps_ratio: null
+  warmup_steps: 1000
+  clip_grad: 1.0
+  lr_scheduler: cosine
+
+
+model:
+  name: qtsmmae
+  in_features: null  # set to len(data.features)
+  patch_len: 10
+  max_patches: 96  # data.lookback / patch_len
+  input_clip: 10.0
+  hidden_size: 256
+  num_hidden_layers: 12
+  num_attention_heads: 8
+  intermediate_size: 1024
+  hidden_act: gelu
+  hidden_dropout_prob: 0.0
+  attention_probs_dropout_prob: 0.0
+  layer_norm_eps: 1e-6
+  initializer_range: 0.02
+  objective: future  # future | masked
+  predictor_layers: 2  # future predictor, as the JEPA's
+  # future blocks, as the JEPA's; the masked objective keeps them so the dataset samples the same windows
+  horizons: [1, 60, 240]
+  target_block_len: 30
+  mask_ratio: 0.4  # PatchTST default
+  mask_span: 1  # masked patches come in contiguous spans of this many; must divide lookback / patch_len
+  target_clip: 10.0
+  loss: mse  # mse | huber
+  huber_delta: 1.0
+  readout: cls  # cls | mean: the state encode() returns to the probe (embed --readout overrides)
+  enable_gradient_checkpointing: false
+
+trainer:
+  default_local_dir: null  # defaults to ./experiments/{project_name}-{timestamp}
+  model_path: null  # continue from a saved global_step_* directory
+  project_name: series-qtsmmae-10m-202212-1min-ohlcv
+  experiment_name: null  # set from timestamp
+  logger: ["console", "tensorboard"]
+  seed: ${data.seed}
+  bf16: true
+  save_freq: 2000
+  test_freq: 1000
+  diag_freq: 50  # collapse diagnostics every n steps

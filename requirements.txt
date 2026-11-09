@@ -1,0 +1,22 @@
+# Python >= 3.12. Install a CUDA build of torch matching your driver first, e.g.
+#   pip install torch==2.6.0 --index-url https://download.pytorch.org/whl/cu126
+torch>=2.6
+
+# core: models, training, data
+transformers>=4.57,<5
+safetensors
+hydra-core>=1.3
+omegaconf>=2.3
+numpy
+pandas<3
+pyarrow>=19
+polars>=1.0
+click
+tqdm
+tensorboard
+
+# evaluation (gbdt probes) and foundation-model baselines (external/)
+lightgbm
+einops
+huggingface_hub
+packaging
