@@ -1,5 +1,16 @@
 # MC-JEPA
 
+Code for **[Market-Conditioned JEPA: Learning from Unpredictable Market Shocks](https://arxiv.org/abs/2611.13572)**.
+
+Much of the variation in a stock's price comes from market-wide shocks that cannot be predicted from
+the stock's own history. MC-JEPA conditions the JEPA predictor on a leave-one-out market condition built
+from the other stocks' future target embeddings (training only), combined through factor loadings derived
+from the stock's own representation. This makes market exposure necessary for prediction and reduces the
+noise in learning the stock-specific component. The predictor also makes an unconditioned prediction from
+the context alone, and the two losses are mixed with weight λ.
+
+![MC-JEPA overview](assets/overview.png)
+
 Self-supervised representation learning for stock time series with a factorized panel JEPA
 (`mc_jepa/models/qtsmfjepa`), plus series SSL baselines (CPC, MAE, TS2Vec, autoregressive) and
 pretrained time-series foundation-model baselines (Chronos-2, Kronos, MOMENT, TimesFM).
